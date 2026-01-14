@@ -19,6 +19,9 @@ This is a simple CTFd framework setup.
 
 # CTFd-Instance/
 The folder consists of:
+## CTFd-Static-Instance.md 
+This covers the static and beginner instances and how the containers work. One sample web-challenge will be given to set up for testing and learning.
+
 ## CTFd-Dynamic-Instance.md
 Learn how to set up instances to host any challenges that require links, such as web, crypto, and rev. It will mention how to set up a TLS connection for the instances to work. Most importantly, this is the part where the "Start Instance" button is covered/created. 
 
