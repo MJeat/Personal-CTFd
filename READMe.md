@@ -54,27 +54,34 @@ newgrp docker
 
 
 Key CLI
-docker ps will only show the running containers
-docker ps -a will show every container and its status
-exit will exit a container if you are inside a container
-docker will show you a list of commands to use for containers and general commands
-docker image will show you a list of commands for dealing with images only
-====================================
-Create image & container
-To create a container, you need an image. You can pull an image from the internet. In this example, I will pull Alpine, a lightweight Linux distro. 
-docker pull alpine
 
-Creating the container:
+- ```docker ps``` will only show the running containers
+- ```docker ps -a``` will show every container and its status
+- ```exit``` will exit a container if you are inside a container
+- ```docker``` will show you a list of commands to use for containers and general commands
+- ```docker images``` will show you a list of commands for dealing with images only
+====================================
+## Create image & container
+To create a container, you need an image. You can pull an image from the internet. In this example, I will pull Alpine, a lightweight Linux distro. 
+```
+docker pull alpine
+```
+### Creating the container:
+```
 docker run --name {docker_name} -it {image_name} {shell}
 -i means interactive
 -t means allocate TTY in the container. It makes sure you can use your Linux terminal in the container. 
-Example: docker run --name container1 -it alpine /bin/sh
+```
+Example: ```docker run --name container1 -it alpine /bin/sh```
 
-Remove image & container
+### Remove image & container
 To remove a Docker container:
+```
 docker rm {container_name or ID}
-
+```
 To remove a Docker image:
+```
 docker rmi {image_name or ID}
+```
 Note: rmi = remove image
 
