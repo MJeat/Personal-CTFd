@@ -1,6 +1,4 @@
-Hello this will be a tutorial on how to set up CTFd as well as to modify it to make it look "Good Enough"
 
-==========================================
 # Docker Installation
 Platform: Ubuntu 25.04
 (Use lsb_release -a to know the Ubuntu OS version)
