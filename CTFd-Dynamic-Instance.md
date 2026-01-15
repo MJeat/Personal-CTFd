@@ -45,7 +45,7 @@ docker compose up -d
 Open CTFd web UI > login > At the top, you will see the Plugins option
 
 # Step 3: For Docker Instance Host (Setting Up HTTPS Connection) (Machine B)
-Official Document: [Link](https://docs.docker.com/engine/security/protect-access/#use-tls-https-to-protect-the-docker-daemon-socket)
+Official Document: [Link](https://docs.docker.com/engine/security/protect-access/#use-tls-https-to-protect-the-docker-daemon-socket) <br/>
 This is about Securing Docker Daemon Access with TLS (HTTPS). 
 
 ## Part 1: TLS Certificate Generation (Docker Instance Host)
