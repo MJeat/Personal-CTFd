@@ -629,3 +629,11 @@ The original has the word saying, “Start an instance for a challenge”. I cha
 {% endblock %}
 ```
 
+### 6. Final
+```
+docker compose down
+docker compose up -d
+```
+
+
+# END
