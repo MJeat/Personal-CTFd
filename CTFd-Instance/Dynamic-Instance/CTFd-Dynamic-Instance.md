@@ -278,7 +278,7 @@ To fix this, in the CTFd Host machine or Machine A, you have to create 1 file an
 
 ### 1. fixed_plugins.py
 Create a file called ```fixed_plugins.py``` and modify it:
-For full code, check [fixed_plugins.py]()
+For full code, check [fixed_plugins.py](https://github.com/MJeat/Modified-CTFd-Framework/blob/main/CTFd-Instance/Dynamic-Instance/Modified-Files/fixed_plugins.py)
 Just copy this container Python file out because it has read-only access. Make sure you are in the ```~/CTFd/``` directory:
 ``` 
 docker cp ctfd-ctfd-1:/opt/CTFd/CTFd/plugins/docker_challenges/__init__.py ./fixed_plugin.py
@@ -467,4 +467,42 @@ def load(app):
 
 ```
 
+### 2. docker-compose.yml
+Second file, docker-compose.yml:
+
+Navigate to ~/CTFd/
+
+```
+geany docker-compose.yml
+```
+And paste this code (Changes only in services class). Full code is at [docker-compose.yml](https://github.com/MJeat/Modified-CTFd-Framework/blob/main/CTFd-Instance/Dynamic-Instance/Modified-Files/docker-compose.yml): 
+```
+services:
+  ctfd:
+    build: .
+    user: root
+    restart: always
+    ports:
+      - "8000:8000"
+    environment:
+      - UPLOAD_FOLDER=/var/uploads
+      - DATABASE_URL=mysql+pymysql://ctfd:ctfd@db/ctfd
+      - REDIS_URL=redis://cache:6379
+      - WORKERS=1
+      - LOG_FOLDER=/var/log/CTFd
+      - ACCESS_LOG=-
+      - ERROR_LOG=-
+      - REVERSE_PROXY=true
+    volumes:
+      - .data/CTFd/logs:/var/log/CTFd
+      - .data/CTFd/uploads:/var/uploads
+      - .:/opt/CTFd:ro
+      # ADD THIS LINE (use the full path to your fixed_plugin.py):
+      - ./fixed_plugins.py:/opt/CTFd/CTFd/plugins/docker_challenges/__init__.py:ro
+    depends_on:
+      - db
+    networks:
+        default:
+        internal:
+```
 
