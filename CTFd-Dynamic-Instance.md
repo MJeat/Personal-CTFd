@@ -270,3 +270,197 @@ Verify the image was built successfully:
 ```
 sudo docker images
 ```
+
+## Part 6: Make Start-Instance Running
+After you setup CTFd *Step 2.2 Install CTFd Docker Plugin* and host a docker challenge type, you should see a *Start Instance* button once you start the challenge. However, you will most likely face an issue with "Internal Server Error". 
+
+To fix this, in the CTFd Host machine or Machine A, you have to create 1 file and modify 5 files.
+
+### 1. fixed_plugins.py
+Create a file called ```fixed_plugins.py``` and modify it:
+Just copy this container Python file out because it has read-only access. Make sure you are in the ```~/CTFd/``` directory:
+``` 
+docker cp ctfd-ctfd-1:/opt/CTFd/CTFd/plugins/docker_challenges/__init__.py ./fixed_plugin.py
+geany the fixed_plugin.py
+```
+FIND THIS SECTION Line 284:
+```
+def get_unavailable_ports(docker):
+    r = do_request(docker, '/containers/json?all=1')
+    result = list()
+    # Ensure r is a valid response object and has json
+    if not hasattr(r, 'json'):
+        return result
+        
+    for i in r.json():
+        if i.get('Ports'):
+            for p in i['Ports']:
+                # Use .get() to avoid KeyError if PublicPort is missing
+                public_port = p.get('PublicPort')
+                if public_port:
+                    result.append(public_port)
+    return result
+
+def get_required_ports(docker, image):
+    r = do_request(docker, f'/images/{image}/json?all=1')
+    try:
+        data = r.json()
+        # Use .get() with an empty dict fallback
+        exposed_ports = data.get('Config', {}).get('ExposedPorts', {})
+        return exposed_ports.keys()
+    except Exception:
+        traceback.print_exc()
+        return []
+```
+
+Line 556:
+```
+@container_namespace.route("", methods=['POST', 'GET'])
+class ContainerAPI(Resource):
+    @authed_only
+    def get(self):
+        container = request.args.get('name')
+        challenge = request.args.get('challenge')
+        
+        if not container or not challenge:
+            return abort(403, "Missing parameters")
+        
+        docker = DockerConfig.query.filter_by(id=1).first()
+        
+        # 1. Determine Identity (Team vs User)
+        if is_teams_mode():
+            session = get_current_team()
+            tracker_filter = {"team_id": session.id}
+        else:
+            session = get_current_user()
+            tracker_filter = {"user_id": session.id}
+
+        # 2. Cleanup expired containers (Changed from 7200s to 600s/10m for efficiency)
+        # You can adjust '600' to your preferred maximum lifetime
+        all_trackers = DockerChallengeTracker.query.filter_by(**tracker_filter).all()
+        for i in all_trackers:
+            if (unix_time(datetime.utcnow()) - int(i.timestamp)) >= 600:
+                delete_container(docker, i.instance_id)
+                db.session.delete(i)
+        db.session.commit()
+
+        # 3. Handle logic for EXISTING container for THIS challenge
+        check = DockerChallengeTracker.query.filter_by(**tracker_filter).filter_by(docker_image=container).first()
+        
+        if check:
+            # Check if 5 minutes (300s) have passed
+            time_since_creation = unix_time(datetime.utcnow()) - int(check.timestamp)
+            if time_since_creation < 300:
+                return abort(403, "To prevent abuse, dockers can be reverted and stopped after 5 minutes.")
+
+            # Stop Request
+            if request.args.get('stopcontainer'):
+                delete_container(docker, check.instance_id)
+                db.session.delete(check)
+                db.session.commit()
+                return {"result": "Container stopped"}
+            
+            # Revert Request (Implicitly happens if we reach here)
+            delete_container(docker, check.instance_id)
+            db.session.delete(check)
+            db.session.commit()
+
+        # 4. Global Limit: Check if they have ANY other container running
+        # This prevents running 2 different challenges at once
+        active_other = DockerChallengeTracker.query.filter_by(**tracker_filter).first()
+        if active_other:
+            return abort(403, f"Another container is already running for: <b>{active_other.challenge}</b>. Stop it first.")
+
+        # 5. Create New Container
+        portsbl = get_unavailable_ports(docker)
+        create = create_container(docker, container, session.name, portsbl)
+        
+        # Determine the next Revert Time (+5 minutes = 300s)
+        # Adjust this number to change how long they must wait to revert again
+        REVERT_COOLDOWN = 300 
+
+        ports = json.loads(create[1])['HostConfig']['PortBindings'].values()
+        entry = DockerChallengeTracker(
+            team_id=session.id if is_teams_mode() else None,
+            user_id=session.id if not is_teams_mode() else None,
+            docker_image=container,
+            timestamp=unix_time(datetime.utcnow()),
+            revert_time=unix_time(datetime.utcnow()) + REVERT_COOLDOWN, 
+            instance_id=create[0]['Id'],
+            ports=','.join([p[0]['HostPort'] for p in ports]),
+            host=str(docker.hostname).split(':')[0],
+            challenge=challenge
+        )
+        db.session.add(entry)
+        db.session.commit()
+        
+        return {
+            "success": True,
+            "data": {
+                "host": entry.host,
+                "ports": entry.ports.split(',')
+            }
+        }
+
+def monitor_containers(app):
+    with app.app_context():
+        while True:
+            try:
+                # 1. Force the database session to refresh
+                db.session.expire_all()
+                db.session.commit() # Calling commit helps clear stale transaction states
+                
+                docker = DockerConfig.query.filter_by(id=1).first()
+                if docker:
+                    # 2. Use a slightly padded 'now' to account for sync drift
+                    # We add 2 seconds to 'now' to ensure we catch everything the JS sees
+                    now = unix_time(datetime.utcnow()) + 2
+                    
+                    all_instances = DockerChallengeTracker.query.all()
+                    
+                    for instance in all_instances:
+                        # 3. Add debug logging to see why it's skipping
+                        # print(f"Checking {instance.instance_id}: Now({now}) vs Expiry({instance.revert_time})")
+                        
+                        if now >= int(instance.revert_time):
+                            print(f"[Monitor] Killing expired instance {instance.instance_id}")
+                            delete_container(docker, instance.instance_id)
+                            db.session.delete(instance)
+                            db.session.commit()
+            except Exception as e:
+                print(f"[Docker Monitor Error]: {e}")
+                db.session.rollback()
+            
+            time.sleep(3)
+```
+
+Line 747:
+
+```
+def load(app):
+    app.db.create_all()
+    CHALLENGE_CLASSES['docker'] = DockerChallengeType
+    
+    @app.template_filter('datetimeformat')
+    def datetimeformat(value, format='%Y-%m-%d %H:%M:%S'):
+        return datetime.fromtimestamp(value).strftime(format)
+        
+    register_plugin_assets_directory(app, base_path='/plugins/docker_challenges/assets')
+    
+    define_docker_admin(app)
+    define_docker_status(app)
+    
+    # Register your API namespaces
+    CTFd_API_v1.add_namespace(docker_namespace, '/docker')
+    CTFd_API_v1.add_namespace(container_namespace, '/container')
+    CTFd_API_v1.add_namespace(active_docker_namespace, '/docker_status')
+    CTFd_API_v1.add_namespace(kill_container, '/nuke')
+    
+    # START THE AUTO-KILLER THREAD   | This is related to function called: monitor_containers
+    thread = threading.Thread(target=monitor_containers, args=(app,))
+    thread.daemon = True
+    thread.start()
+
+```
+
+
